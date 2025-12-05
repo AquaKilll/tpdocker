@@ -3,7 +3,7 @@
 **EXERCICE 1 : Installation de Docker et vérification de l’environnement**
 
 Question 1.b.
-![alt text](image_tp1/image.png)
+![alt text](image_tp1/image1b.png)
 
 Question 1.c. Listez maintenant les conteneurs présents sur votre machine (en cours d'exécution ou arrêtés) :
 `docker ps -a`
@@ -61,14 +61,14 @@ On vous fournit ci-dessous un squelette de fichier app.py avec quelques élémen
 
 Question 3.a. Complétez le code afin que l’API expose une route /health qui renvoie un JSON {"status": "ok"}.
 
-# app.py
-# TODO: importer FastAPI
+app.py
+TODO: importer FastAPI
 from fastapi import FastAPI
 
-# TODO: créer une instance FastAPI
+TODO: créer une instance FastAPI
 app = FastAPI()
 
-# TODO: définir une route GET /health
+TODO: définir une route GET /health
 @app.get("/health")
 def health(): 
     return {"status": "ok"}
@@ -76,21 +76,21 @@ def health():
 Étape 2 — Compléter le Dockerfile
 
 Question 3.b. Complétez les lignes marquées # TODO.
-# Dockerfile
+Dockerfile
 
-# TODO: choisir une image de base Python
+TODO: choisir une image de base Python
 FROM python:3.9-slim
 
-# TODO: définir le répertoire de travail dans le conteneur
+TODO: définir le répertoire de travail dans le conteneur
 WORKDIR /app
 
-# TODO: copier le fichier app.py
+TODO: copier le fichier app.py
 COPY app.py .
 
-# Installer FastAPI et Uvicorn
+Installer FastAPI et Uvicorn
 RUN pip install fastapi uvicorn
 
-# TODO: lancer le serveur au démarrage du conteneur
+TODO: lancer le serveur au démarrage du conteneur
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
 
 Étape 3 — Construire l'image Docker
