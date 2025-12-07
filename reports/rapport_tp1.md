@@ -131,4 +131,64 @@ ou bien en ouvrant http://localhost:8000/health dans un navigateur. Vérifiez qu
 
 Ajoutez une capture d’écran de la réponse dans votre rapport.
 
+Retour ok
+
 ![alt text](image_tp1/image4b.png)
+
+Étape 3 — Observer les conteneurs en cours d’exécution
+
+Question 4.c. Dans un autre terminal, affichez la liste des conteneurs en cours d’exécution :
+`docker ps`
+
+Identifiez la ligne correspondant au conteneur simple-api et notez dans votre rapport :
+- le nom du conteneur : angry_euclid
+- l'image utilisée : simple-api
+- le port mappé : 0.0.0.0:8000->8000/tcp
+
+Étape 4 — Arrêter le conteneur
+
+Question 4.d. Arrêtez le conteneur en cours d’exécution depuis un autre terminal à l’aide de la commande :
+`docker stop <nom_ou_id_du_conteneur>`
+
+Puis vérifiez qu’il n’apparaît plus dans docker ps, mais qu’il est toujours visible dans docker ps -a. Expliquez brièvement la différence entre ces deux commandes dans votre rapport.
+
+Après avoir exécuté `docker stop`, le conteneur n'apparaît plus dans `docker ps` mais reste visible dans `docker ps -a`.
+
+Différence entre les commandes :
+- `docker ps` : Ne liste que les conteneurs actifs (en cours d'exécution). Comme notre conteneur est arrêté, il n'y figure plus.
+- `docker ps -a` (pour "all") : Liste tous les conteneurs existants sur la machine, quel que soit leur état (en cours d'exécution, arrêtés, ou en erreur).
+
+**EXERCICE 5 : Démarrer un mini-système multi-conteneurs avec Docker Compose**
+
+Étape 1 — Préparer la structure des fichiers
+
+Ok
+
+Étape 2 — Compléter le fichier docker-compose.yml
+
+Question 5.b. Complétez le fichier docker-compose.yml ci-dessous.
+
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      # TODO: définir l'utilisateur, le mot de passe et le nom de la base
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+      POSTGRES_DB: demo
+    ports:
+      # TODO: exposer le port PostgreSQL vers l'hôte
+      - "5432:5432"
+
+  api:
+    # TODO: construire l'image à partir du Dockerfile dans ./api
+    build: ./api
+    ports:
+      # TODO: exposer le port 8000 du conteneur vers l'hôte
+      - "8000:8000"
+    depends_on:
+      # TODO: indiquer que l'API dépend de la base de données
+      - db
+
