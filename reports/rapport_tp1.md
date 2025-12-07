@@ -109,3 +109,26 @@ L'image finale a été nommée et taguée `simple-api:latest` avec succès.
 
 ![alt text](image_tp1/image3c.png)
 
+**EXERCICE 4 : Exécuter l’API FastAPI dans un conteneur Docker**
+
+Étape 1 — Lancer le conteneur
+
+Question 4.a. Lancez un conteneur à partir de l’image simple-api en exposant le port 8000 du conteneur sur le port 8000 de votre machine. Utilisez la commande suivante :
+`docker run -p 8000:8000 simple-api`
+
+Expliquez dans votre rapport le rôle de l’option -p 8000:8000.
+
+L'option `-p 8000:8000` sert à effectuer une redirection de port (port mapping) entre la machine hôte et le conteneur: 
+- Le premier 8000 est le port sur ma machine (Host)
+- Le second 8000 est le port interne du conteneur
+
+Étape 2 — Tester l’endpoint /health
+
+Question 4.b. Dans un autre terminal (ou via votre navigateur), appelez l’endpoint /health de l’API :
+`curl http://localhost:8000/health`
+
+ou bien en ouvrant http://localhost:8000/health dans un navigateur. Vérifiez que la réponse JSON correspond à ce qui était attendu.
+
+Ajoutez une capture d’écran de la réponse dans votre rapport.
+
+![alt text](image_tp1/image4b.png)
