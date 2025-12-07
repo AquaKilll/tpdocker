@@ -192,3 +192,221 @@ services:
       # TODO: indiquer que l'API dépend de la base de données
       - db
 
+Étape 3 — Démarrer la stack avec Docker Compose
+
+Question 5.c. À la racine de votre projet (là où se trouve docker-compose.yml), lancez les services en arrière-plan :
+`docker compose up -d`
+
+Puis affichez la liste des services gérés par Docker Compose :
+`docker compose ps`
+
+Vérifiez dans votre rapport que les services db et api sont bien démarrés (capture d’écran recommandée).
+
+Tout est ok
+
+![alt text](image_tp1/image5c.png)
+
+Étape 4 — Tester à nouveau l’endpoint /health
+
+Question 5.d. Vérifiez que l’endpoint /health de l’API est toujours accessible, cette fois-ci lorsque l’API est lancée via Docker Compose :
+`curl http://localhost:8000/health`
+
+ou via votre navigateur. Ajoutez une capture d’écran dans votre rapport.
+
+Toujours ok
+
+![alt text](image_tp1/image5d.png)
+
+Étape 5 — Arrêter proprement les services
+
+Question 5.e. Lorsque vous avez terminé, arrêtez et supprimez les conteneurs gérés par Docker Compose :
+`docker compose down`
+
+Expliquez dans votre rapport la différence entre :
+- Arrêter les services avec docker compose down ;
+- Arrêter un conteneur individuel avec docker stop <id>.
+
+`docker compose down` : Cette commande agit sur l'ensemble de la stack définie dans le fichier YAML. Elle effectue un nettoyage complet :
+    1. Arrête tous les services (API et Base de données).
+    2. Supprime les conteneurs (ils disparaissent totalement, même de `docker ps -a`).
+    3. Supprime le réseau virtuel associé (ici `tpdocker_default`).
+
+`docker stop <id>` : Cette commande cible un conteneur unique. Elle se contente d'arrêter son exécution (le processus s'éteint), mais le conteneur existe toujours (visible dans `docker ps -a`).
+
+**EXERCICE 6 : Interagir avec la base de données PostgreSQL dans un conteneur**
+
+Étape 1 — Se connecter au conteneur PostgreSQL
+
+Question 6.a. Utilisez la commande suivante pour ouvrir un shell psql à l’intérieur du conteneur PostgreSQL :
+`docker compose exec db psql -U demo -d demo`
+
+Expliquez dans votre rapport le rôle de chaque option (exec, db, -U, -d).
+
+- `exec` : Cette commande Docker Compose permet d'exécuter une commande à l'intérieur d'un conteneur déjà en cours d'exécution.
+- `db` : C'est le nom du service défini dans le fichier `docker-compose.yml`. Docker Compose se charge de retrouver le conteneur associé (ici `tpdocker-db-1`).
+- `-U demo` : C'est une option de la commande `psql`. Elle spécifie l'utilisateur (User) avec lequel on souhaite se connecter (ici "demo").
+- `-d demo` : C'est une option de la commande `psql`. Elle indique le nom de la base de données (Database) à laquelle se connecter (ici "demo").
+
+Étape 2 — Exécuter quelques commandes SQL simples
+
+Question 6.b. Une fois connecté à psql, exécutez les commandes suivantes :
+`SELECT version();`
+Puis :
+`SELECT current_database();`
+
+Notez dans votre rapport les résultats obtenus, et ajoutez une capture d’écran de la session psql.
+
+Version : `SELECT version();`
+- Résultat : `PostgreSQL 16.11 (Debian 16.11-1.pgdg13+1)...`
+- Cela confirme que le serveur PostgreSQL tourne bien sous la version 16, basée sur une image Debian.
+
+Base courante : `SELECT current_database();`
+- Résultat : `demo`
+- Cela confirme que je suis bien connecté à la base de données nommée "demo", comme défini dans le fichier `docker-compose.yml`.
+
+![alt text](image_tp1/image6b.png)
+
+Étape 3 — Comprendre la connexion depuis d'autres services
+
+Question 6.c. Dans votre rapport, expliquez comment un autre service Docker (par exemple l’API) pourrait se connecter à la base de données PostgreSQL. Précisez :
+- le hostname à utiliser : db
+- le port : 5432
+- l’utilisateur et le mot de passe : demo
+- le nom de la base : demo
+
+Exemple de connexion : `postgresql://demo:demo@db:5432/demo`
+
+Étape 4 — Nettoyer
+
+Question 6.d. Après vos tests, vous pouvez arrêter la stack :
+`docker compose down`
+
+Si vous souhaitez également supprimer les volumes associés (données persistantes), vous pouvez utiliser :
+`docker compose down -v`
+
+Expliquez dans votre rapport la conséquence de l’option -v.
+
+L'option `-v` demande à Docker de supprimer également les volumes de stockage associés au projet.
+
+Conséquence :
+C'est une action destructive. Si j'utilise cette option, toutes les données stockées dans la base de données (tables, utilisateurs, enregistrements) sont définitivement effacées.
+
+**EXERCICE 7 : Déboguer des conteneurs Docker : commandes essentielles et bonnes pratiques**
+
+Étape 1 — Afficher les logs d’un service
+
+Question 7.a. Affichez en continu les logs du service api exécuté par Docker Compose :
+`docker compose logs -f api`
+
+Relevez dans votre rapport ce que vous observez lorsque :
+- l’API démarre correctement ;
+- l’API reçoit une requête /health.
+
+On remarque bien le bon demarrage de l'API ainsi que le get fait avec le curl http://localhost:8000/health dans un autre terminal via la commande de logs.
+
+![alt text](image_tp1/image7a.png)
+
+Étape 2 — Entrer dans un conteneur en cours d’exécution
+
+Question 7.b. Utilisez la commande ci-dessous pour ouvrir un shell sh dans le conteneur de l’API :
+`docker compose exec api sh`
+
+À l’intérieur du conteneur :
+`ls`
+`python --version`
+`exit`
+Expliquez dans votre rapport ce que vous observez.
+
+La commande `docker compose exec api sh` a permis d'ouvrir un terminal interactif à l'intérieur du conteneur API pendant qu'il tourne.
+
+Observations :
+Contenu du dossier (`ls`) :
+- On retrouve le fichier `app.py`.
+- Cela confirme que l'instruction `COPY app.py .` du Dockerfile a bien fonctionné et que nous sommes bien situés dans le répertoire de travail `/app` (défini par `WORKDIR`).
+
+Version de Python (`python --version`) :
+- Le système retourne `Python 3.9.25`.
+- Cela confirme que le conteneur utilise bien l'image de base `python:3.9-slim` que nous avons spécifiée dans le `Dockerfile`.
+
+![alt text](image_tp1/image7b.png)
+
+Étape 3 — Redémarrer un service
+
+Question 7.c. Redémarrez seulement le service api à l’aide de la commande suivante :
+`docker compose restart api`
+
+Vérifiez qu’après redémarrage, l’API est toujours accessible sur /health Expliquez dans votre rapport dans quelles situations un redémarrage est utile.
+
+Le redémarrage est utile dans plusieurs situations critiques :
+- Application bloquée ou bug : Si l'application ne répond plus ou a consommé trop de mémoire, un redémarrage permet de repartir sur un état propre.
+- Perte de connexion : Si la base de données a redémarré, l'API peut avoir perdu sa connexion. La redémarrer force une nouvelle tentative de connexion.
+- Mise à jour de configuration : Si on modifie des variables d'environnement dans le `docker-compose.yml`, un simple redémarrage suffit parfois pour qu'elles soient prises en compte.
+
+Toujours ok.
+
+![alt text](image_tp1/image7c.png)
+
+Étape 4 — Conteneur qui ne démarre pas : diagnostic
+
+Question 7.d. Simulez un problème en introduisant volontairement une erreur dans votre fichier app.py (par exemple renommer app en appi), puis reconstruisez l’image :
+`docker build -t simple-api .`
+
+Relancez Docker Compose :
+`docker compose up -d --build`
+
+Observez les logs :
+`docker compose logs -f api`
+
+Expliquez dans votre rapport comment vous avez identifié la cause de l’erreur.
+
+Suite à la modification volontaire du code (renommage de l'instance `app` en `appi`), le conteneur a refusé de démarrer correctement.
+
+Identification de la cause via les logs :
+La commande `docker compose logs -f api` a affiché le message critique suivant :
+`ERROR:    Error loading ASGI app. Attribute "app" not found in module "app".`
+
+Analyse technique :
+Ce message s'explique par la commande de démarrage définie dans notre Dockerfile :
+`CMD ["uvicorn", "app:app", ...]`
+
+Cette syntaxe `app:app` signifie :
+- Chercher un fichier nommé `app.py` (le module).
+- Chercher à l'intérieur une variable/instance nommée `app`.
+
+Comme j'ai renommé la variable en `appi` dans le code Python, Uvicorn ne trouve plus l'objet `app` attendu et arrête le processus, ce qui provoque le crash du conteneur.
+
+![alt text](image_tp1/image7d.png)
+
+Étape 5 — Supprimer des conteneurs et images
+
+Questioin 7.e. Supprimez tous les conteneurs arrêtés :
+`docker container prune`
+
+Supprimez toutes les images inutilisées :
+`docker image prune`
+
+Expliquez dans votre rapport pourquoi il est utile de nettoyer régulièrement son environnement Docker.
+
+Il est utile de nettoyer régulièrement son environnement Docker pour plusieurs raisons :
+- Libérer de l'espace disque : Les images Docker (surtout celles de Python ou de bases de données) pèsent souvent plusieurs centaines de Méga-octets. À chaque fois qu'on reconstruit une image (avec `docker build`), l'ancienne version devient "orpheline" (dangling) et continue d'occuper de l'espace inutilement. Le nettoyage permet de récupérer parfois plusieurs Gigaoctets.
+- Maintenir la clarté opérationnelle : Accumuler des dizaines de conteneurs arrêtés (statut `Exited`) pollue la sortie de la commande `docker ps -a`, rendant difficile la surveillance des services réellement importants.
+
+**EXERCICE 8 : Questions de réflexion et consignes pour le rendu**
+
+Question 8.a. Expliquez pourquoi un notebook Jupyter n’est généralement pas adapté pour déployer un modèle de Machine Learning en production. Votre réponse doit faire référence à au moins deux aspects vus durant ce TP (ex : reproductibilité, environnement, automatisation...).
+
+Un Jupyter Notebook est un outil très bien pour l'exploration de données et le prototypage, mais il n'est pas adapté au déploiement d'un modèle en production pour plusieurs raisons observées durant ce TP :
+- L'isolation de l'environnement (Reproductibilité) : Dans un Notebook, on dépend des bibliothèques installées sur la machine locale. Si on change d'ordinateur, le code risque de ne plus marcher. À l'inverse, dans ce TP, nous avons utilisé un Dockerfile pour figer une version précise de Python (`3.9-slim`) et des dépendances exactes. L'image Docker garantit que le code s'exécutera exactement de la même manière partout.
+- L'automatisation du démarrage : Un Notebook nécessite souvent qu'un humain exécute les cellules dans un ordre précis. À l'inverse, dans ce TP, l'instruction `CMD` du Dockerfile permet à l'application de démarrer automatiquement dès le lancement du conteneur, ce qui est indispensable pour un serveur redémarrant seul après une panne.
+
+Question 8.b. Expliquez pourquoi Docker Compose est un outil essentiel lorsque l’on manipule plusieurs services (API, base de données...). Référencez au moins un avantage observé lors du TP.
+
+Docker Compose est essentiel dès que l'architecture dépasse un seul conteneur (ex: API + Base de données), comme observé dans l'exercice 5.
+
+Avantage majeur observé : La gestion automatique du réseau.
+Sans Docker Compose, nous aurions dû :
+1. Créer un réseau manuellement (`docker network create`).
+2. Lancer la base de données en la rattachant à ce réseau.
+3. Lancer l'API en la rattachant au même réseau et en gérant les variables d'environnement à la main.
+
+Avec Docker Compose, tout cela a été géré par un seul fichier (`docker-compose.yml`) et une seule commande (`docker compose up`). De plus, la résolution DNS interne a permis à l'API de contacter la base de données simplement en utilisant son nom de service (`db`), sans avoir à gérer les adresses IP.
