@@ -119,3 +119,30 @@ Combien de clients avons-nous après month_000 ? : 7043
 
 Question 4.a. Compléter la fonction validate_with_ge
 
+La fonction `validate_with_ge` agit comme un garde-fou de qualité des données (Quality Gate). Elle est exécutée immédiatement après l'ingestion (upsert) et avant toute utilisation ultérieure des données (comme les snapshots). Son rôle est de vérifier que les données ingérées respectent des règles métier strictes (schéma exact, pas de valeurs négatives, pas de valeurs nulles critiques). Si une validation échoue, le pipeline s'arrête immédiatement (fail-fast), empêchant ainsi des données corrompues de se propager dans le système de Machine Learning.
+
+Question 4.b. Relancer l’ingestion pour month_000 avec validation
+
+![alt text](image_tp2/imagetp24b.png)
+
+Question 4.c. Compléter le rapport : pourquoi ces bornes et comment protègent-elles le modèle ?
+
+Validation des données :
+
+- Code des expectations pour usage_agg_30d :
+
+Vérification de la cohérence des données (valeurs positives)
+gdf.expect_column_values_to_be_between("watch_hours_30d", min_value=0)
+gdf.expect_column_values_to_be_between("avg_session_mins_7d", min_value=0)
+
+- Justification des bornes choisies :
+J'ai choisi une borne inférieure (min_value=0) pour les colonnes watch_hours_30d (heures de visionnage) et avg_session_mins_7d (durée moyenne de session) car le temps ne peut pas être négatif.
+Une valeur négative dans ces champs est physiquement impossible et indique nécessairement une erreur technique en amont (bug dans le calcul de l'agrégat, problème de logs, soustraction inversée).
+
+- Protection du modèle de Machine Learning :
+Ces règles agissent comme un bouclier pour le modèle :
+    - Stabilité mathématique : Certains algorithmes ou transformations de features (comme le passage au logarithme log(x) souvent utilisé pour normaliser des durées) provoqueraient des erreurs (crash) si on leur fournissait des nombres négatifs.
+    - Intégrité statistique : Si le modèle s'entraîne sur des données contenant des valeurs aberrantes (ex: -999 heures), il va apprendre des corrélations fausses ("Bruit"). En production, cela conduirait à des prédictions de désabonnement (Churn) totalement erronées ("Garbage In, Garbage Out").
+
+**EXERCICE 5 : Snapshots et ingestion month_001**
+

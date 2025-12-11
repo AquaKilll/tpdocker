@@ -12,7 +12,7 @@ PG = {
     "port": os.getenv("POSTGRES_PORT", "5432"),
 }
 
-# Valeurs par défaut pour ce TP
+# Valeurs par défaut pour ce TP (vous pouvez les surcharger avec des variables d'environnement)
 AS_OF = os.getenv("AS_OF", "2024-01-31")               # frontière du mois
 SEED_DIR = os.getenv("SEED_DIR", "/data/seeds/month_000")
 
@@ -29,15 +29,13 @@ def upsert_csv(table: str, csv_path: str, pk_cols: list[str]):
     2) Insert dans la table temporaire
     3) INSERT ... SELECT ... FROM temp ON CONFLICT (...) DO UPDATE ...
     """
-
     df = pd.read_csv(csv_path)
 
-    # Conversion de certains types si nécessaire (ex: dates)
+    # Conversion de certains types si nécessaire (ex: dates, booléens)
     if "signup_date" in df.columns:
         df["signup_date"] = pd.to_datetime(df["signup_date"], errors="coerce")
 
-    # TODO: convertir en booléen les colonnes spécifiques si elles existent
-    # Cela évite que Postgres ne reçoive des entiers ou des chaînes pour des champs booléens
+    # TODO: convertir en booléen les colonnes plan_stream_tv, plan_stream_movies, paperless_billing si elles existent
     bool_cols = ["plan_stream_tv", "plan_stream_movies", "paperless_billing"]
     for col in bool_cols:
         if col in df.columns:
@@ -49,35 +47,97 @@ def upsert_csv(table: str, csv_path: str, pk_cols: list[str]):
 
         # On recrée une table temporaire avec le même schéma que le DataFrame
         conn.exec_driver_sql(f"DROP TABLE IF EXISTS {tmp}")
+        
         df.head(0).to_sql(tmp, conn, if_exists="replace", index=False)
         df.to_sql(tmp, conn, if_exists="append", index=False)
 
         cols = list(df.columns)
         collist = ", ".join(cols)
         pk = ", ".join(pk_cols)
-
+        
         # TODO: construire la partie "SET col = EXCLUDED.col" pour toutes les colonnes non PK
-        updates = ", ".join(
-            [f"{col} = EXCLUDED.{col}" for col in cols if col not in pk_cols]
-        )
+        updates = ", ".join([f"{col} = EXCLUDED.{col}" for col in cols if col not in pk_cols])
 
         sql = text(f"""
             INSERT INTO {table} ({collist})
             SELECT {collist} FROM {tmp}
             ON CONFLICT ({pk}) DO UPDATE SET {updates}
         """)
-        
         conn.execute(sql)
         conn.exec_driver_sql(f"DROP TABLE IF EXISTS {tmp}")
 
+    print(f"Upserted {len(df)} rows into {table}")
     return f"upserted {len(df)} rows into {table}"
+
+@task
+def validate_with_ge(table: str):
+    """
+    Exécute quelques expectations Great Expectations sur une table donnée.
+    Si la validation échoue, on lève une exception pour faire échouer le flow.
+    """
+    import great_expectations as ge
+    import pandas as pd
+    from sqlalchemy import text
+
+    # On récupère un échantillon
+    with engine().begin() as conn:
+        df = pd.read_sql(text(f"SELECT * FROM {table} LIMIT 50000"), conn)
+
+    gdf = ge.from_pandas(df)
+
+    # ---- Expectations spécifiques ----
+    if table == "users":
+        gdf.expect_table_columns_to_match_set([
+            "user_id","signup_date","user_gender","user_is_senior","has_family","has_dependents"
+        ])
+        gdf.expect_column_values_to_not_be_null("user_id")
+
+    elif table == "subscriptions":
+        # CORRECTION : Liste exacte basée sur tes logs (sans payment_method)
+        gdf.expect_table_columns_to_match_set([
+            "user_id", "months_active", "plan_stream_tv", "plan_stream_movies",
+            "contract_type", "paperless_billing", "monthly_fee", "total_paid",
+            "net_service", "add_on_security", "add_on_backup", 
+            "add_on_device_protect", "add_on_support"
+        ])
+        
+        gdf.expect_column_values_to_not_be_null("user_id")
+        gdf.expect_column_values_to_be_between("months_active", min_value=0)
+        gdf.expect_column_values_to_be_between("monthly_fee", min_value=0)
+
+    elif table == "usage_agg_30d":
+        gdf.expect_table_columns_to_match_set([
+            "user_id", "watch_hours_30d", "avg_session_mins_7d",
+            "unique_devices_30d", "skips_7d", "rebuffer_events_7d"
+        ])
+        gdf.expect_column_values_to_be_between("watch_hours_30d", min_value=0)
+        gdf.expect_column_values_to_be_between("avg_session_mins_7d", min_value=0)
+
+    else:
+        gdf.expect_column_values_to_not_be_null("user_id")
+
+    result = gdf.validate()
+
+    if not result.get("success", False):
+        failed = [r for r in result["results"] if not r["success"]]
+        if failed:
+            exp_type = failed[0]["expectation_config"]["expectation_type"]
+            col = failed[0]["expectation_config"]["kwargs"].get("column", "table-level")
+        else:
+            exp_type = "unknown_expectation"
+            col = "unknown"
+        raise AssertionError(f"GE validation failed for {table}: {exp_type} on {col}")
+
+    print(f"GE passed for {table}")
+    return f"GE passed for {table}"
 
 @flow(name="ingest_month")
 def ingest_month_flow(seed_dir: str = SEED_DIR, as_of: str = AS_OF):
     """
     Flow Prefect principal pour le mois donné.
-    Dans cet exercice, on se concentre uniquement sur l'upsert des tables.
+    Effectue l'upsert puis la validation.
     """
+    # Upsert des tables de base
     upsert_csv("users",            f"{seed_dir}/users.csv",            ["user_id"])
     upsert_csv("subscriptions",    f"{seed_dir}/subscriptions.csv",    ["user_id"])
     upsert_csv("usage_agg_30d",    f"{seed_dir}/usage_agg_30d.csv",    ["user_id"])
@@ -85,7 +145,12 @@ def ingest_month_flow(seed_dir: str = SEED_DIR, as_of: str = AS_OF):
     upsert_csv("support_agg_90d",  f"{seed_dir}/support_agg_90d.csv",  ["user_id"])
     upsert_csv("labels",           f"{seed_dir}/labels.csv",           ["user_id"])
 
-    return f"Ingestion terminée pour {as_of}"
+    # Validation GE (garde-fou avant les snapshots)
+    validate_with_ge("users")
+    validate_with_ge("subscriptions")
+    validate_with_ge("usage_agg_30d")
+
+    return f"Ingestion + validation terminées pour {as_of}"
 
 if __name__ == "__main__":
     ingest_month_flow()
