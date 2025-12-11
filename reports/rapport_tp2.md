@@ -146,3 +146,73 @@ Ces règles agissent comme un bouclier pour le modèle :
 
 **EXERCICE 5 : Snapshots et ingestion month_001**
 
+Question 5.a. Compléter la fonction snapshot_month(as_of)
+
+La fonction snapshot_month assure l'historisation des données (Feature Store) en copiant les données des tables actuelles vers des tables d'archives (_snapshots).
+
+Le paramètre as_of joue le rôle de marqueur temporel : il est ajouté à chaque ligne pour indiquer la date de validité de la donnée ("État des données au 31 janvier 2024"). Cela permet de figer l'état du système à des instants précis, ce qui est indispensable pour éviter le data leakage (fuite de données futures) lors de l'entraînement des modèles sur des données passées.
+
+Question 5.b. Ingestion de month_001 avec snapshots
+
+kilia@LEGION-Kilian:~/tpdocker$ docker compose exec postgres psql -U streamflow -d streamflow
+psql (16.11 (Debian 16.11-1.pgdg13+1))
+Type "help" for help.
+
+streamflow=#
+streamflow=#
+streamflow=# SELECT COUNT(*) FROM subscriptions_profile_snapshots WHERE as_of = '2024-01-31';
+ count
+-------
+  7043
+(1 row)
+
+streamflow=# SELECT COUNT(*) FROM subscriptions_profile_snapshots WHERE as_of = '2024-02-29';
+ count
+-------
+  7043
+(1 row)
+
+Commentaire : Nous observons exactement le même nombre de lignes (7043) pour les deux mois (après au début j'avais qu'une snapshot pour '2024-02-29' car je n'avais pas refait l'ingestion de Janvier avec l'update du code pour la snapshot) Cela indique que nous avons un nombre fixe d'utilisateurs. Même si certains clients ont pu résilier (churn) ou changer d'offre durant le mois de février, ils restent présents dans la base de données (probablement avec un statut mis à jour). Il n'y a pas eu d'ajout massif de nouveaux clients (acquisition) ni de suppression physique d'enregistrements dans ce jeu de données pédagogique.
+
+Question 5.c. Compléter le rapport : schéma, explications et réflexion
+
+- Un petit schéma (ASCII ou capture) montrant le pipeline complet
+
+[Source CSV] 
+     |
+     v
+[Orchestrateur Prefect]
+     |
+     +--> 1. UPSERT (Idempotent)
+     |       |
+     |       v
+     |    [PostgreSQL - Tables Live] (État actuel)
+     |
+     +--> 2. VALIDATION (Great Expectations)
+     |       |
+     |       +-- [OK] --> Continue
+     |       +-- [KO] --> Arrêt immédiat (Alerting)
+     |
+     +--> 3. SNAPSHOT (Historisation)
+             |
+             v
+          [PostgreSQL - Tables Snapshots] (État archivé par 'as_of')
+
+- Pourquoi on ne travaille pas directement sur les tables live pour entraîner un modèle ?
+
+Les tables live sont constamment mises à jour. Si nous entraînons un modèle aujourd'hui sur ces données, il sera impossible de reproduire ce même entraînement dans un mois car les données auront changé (clients partis, adresses modifiées). Le Machine Learning exige la reproductibilité.
+
+- Pourquoi les snapshots sont importants pour éviter la data leakage et garantir la reproductibilité temporelle ?
+
+Pour prédire le "Churn" d'un client en février, nous devons utiliser les données telles qu'elles étaient connues fin janvier. Si nous utilisons des données "live" mises à jour en février, nous risquons d'inclure de l'information du futur (ex: le client est marqué "inactif" alors qu'au moment de la prédiction il était encore "actif"). Les snapshots avec la colonne as_of garantissent cette cohérence temporelle.
+
+- Qu’avez-vous trouvé le plus difficile dans la mise en place de l’ingestion ?
+
+La partie la plus complexe a été la configuration de la validation avec Great Expectations. J'ai rencontré une erreur bloquante (expect_table_columns_to_match_set) car le schéma de la base de données contenait des colonnes optionnelles (add_on_..., payment_method) qui n'étaient pas présentes dans mes fichiers CSV sources.
+
+- Quelles erreurs avez-vous rencontrées et comment les avez-vous corrigées ?
+
+Pour corriger ce que j'ai cité au-dessus, j'ai dû :
+
+- Utiliser des logs de débogage pour afficher la liste exacte des colonnes vues par SQLAlchemy.
+- Adapter la liste des colonnes attendues dans le script Python pour qu'elle corresponde à la réalité du schéma en base, et non seulement au fichier CSV. J'ai également compris l'importance de relancer l'ingestion du premier mois (month_000) après avoir implémenté la logique de snapshot pour ne pas avoir de "trou" dans l'historique.

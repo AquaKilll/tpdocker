@@ -131,6 +131,99 @@ def validate_with_ge(table: str):
     print(f"GE passed for {table}")
     return f"GE passed for {table}"
 
+@task
+def snapshot_month(as_of: str):
+    """
+    Crée (si besoin) les tables de snapshots et insère les données
+    pour la date as_of donnée. Utilise une stratégie idempotente
+    (ON CONFLICT DO NOTHING).
+    """
+    ddl = """
+    CREATE TABLE IF NOT EXISTS subscriptions_profile_snapshots (
+      user_id TEXT,
+      as_of DATE,
+      months_active INT,
+      monthly_fee NUMERIC,
+      paperless_billing BOOLEAN,
+      plan_stream_tv BOOLEAN,
+      plan_stream_movies BOOLEAN,
+      net_service TEXT,
+      PRIMARY KEY (user_id, as_of)
+    );
+
+    CREATE TABLE IF NOT EXISTS usage_agg_30d_snapshots (
+      user_id TEXT,
+      as_of DATE,
+      watch_hours_30d NUMERIC,
+      avg_session_mins_7d NUMERIC,
+      unique_devices_30d INT,
+      skips_7d INT,
+      rebuffer_events_7d INT,
+      PRIMARY KEY (user_id, as_of)
+    );
+
+    CREATE TABLE IF NOT EXISTS payments_agg_90d_snapshots (
+      user_id TEXT,
+      as_of DATE,
+      failed_payments_90d INT,
+      PRIMARY KEY (user_id, as_of)
+    );
+
+    CREATE TABLE IF NOT EXISTS support_agg_90d_snapshots (
+      user_id TEXT,
+      as_of DATE,
+      support_tickets_90d INT,
+      ticket_avg_resolution_hrs_90d NUMERIC,
+      PRIMARY KEY (user_id, as_of)
+    );
+    """
+
+    sqls = [
+        f"""
+        INSERT INTO subscriptions_profile_snapshots
+        (user_id, as_of, months_active, monthly_fee, paperless_billing,
+         plan_stream_tv, plan_stream_movies, net_service)
+        SELECT user_id, DATE '{as_of}', months_active, monthly_fee, paperless_billing,
+               plan_stream_tv, plan_stream_movies, net_service
+        FROM subscriptions
+        ON CONFLICT (user_id, as_of) DO NOTHING;
+        """,
+        f"""
+        INSERT INTO usage_agg_30d_snapshots
+        (user_id, as_of, watch_hours_30d, avg_session_mins_7d,
+         unique_devices_30d, skips_7d, rebuffer_events_7d)
+        SELECT user_id, DATE '{as_of}', watch_hours_30d, avg_session_mins_7d,
+               unique_devices_30d, skips_7d, rebuffer_events_7d
+        FROM usage_agg_30d
+        ON CONFLICT (user_id, as_of) DO NOTHING;
+        """,
+        # À compléter : suivre le même pattern pour payments_agg_90d_snapshots
+        f"""
+        INSERT INTO payments_agg_90d_snapshots
+        (user_id, as_of, failed_payments_90d)
+        SELECT user_id, DATE '{as_of}', failed_payments_90d
+        FROM payments_agg_90d
+        ON CONFLICT (user_id, as_of) DO NOTHING;
+        """,
+        f"""
+        INSERT INTO support_agg_90d_snapshots
+        (user_id, as_of, support_tickets_90d, ticket_avg_resolution_hrs_90d)
+        SELECT user_id, DATE '{as_of}', support_tickets_90d, ticket_avg_resolution_hrs_90d
+        FROM support_agg_90d
+        ON CONFLICT (user_id, as_of) DO NOTHING;
+        """
+    ]
+
+    with engine().begin() as conn:
+        # Création des tables de snapshots si nécessaire
+        conn.exec_driver_sql(ddl)
+        # Insertion des données pour as_of
+        for sql in sqls:
+            conn.exec_driver_sql(sql)
+
+    print(f"Snapshots stamped for {as_of}")
+    return f"snapshots stamped for {as_of}"
+
 @flow(name="ingest_month")
 def ingest_month_flow(seed_dir: str = SEED_DIR, as_of: str = AS_OF):
     """
@@ -149,6 +242,9 @@ def ingest_month_flow(seed_dir: str = SEED_DIR, as_of: str = AS_OF):
     validate_with_ge("users")
     validate_with_ge("subscriptions")
     validate_with_ge("usage_agg_30d")
+
+    # Snapshots temporels
+    snapshot_month(as_of)
 
     return f"Ingestion + validation terminées pour {as_of}"
 
