@@ -1,9 +1,9 @@
 services:
   postgres:
     image: postgres:16
-    env_file: .env          # Utiliser les variables définies dans .env
+    env_file: .env
     volumes:
-      - ./db/init:/docker-entrypoint-initdb.d   # Monter les scripts d'init
+      - ./db/init:/docker-entrypoint-initdb.d
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
@@ -12,7 +12,7 @@ services:
     build: ./services/prefect
     depends_on:
       - postgres
-    env_file: .env          # Réutiliser les mêmes identifiants Postgres
+    env_file: .env
     environment:
       PREFECT_API_URL: http://0.0.0.0:4200/api
       PREFECT_UI_URL: http://0.0.0.0:4200
@@ -24,7 +24,28 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - ./services/prefect:/opt/prefect/flows
-      - ./data:/data:ro     # Rendre les CSV accessibles au conteneur Prefect
+      - ./data:/data
+      - ./services/feast_repo/repo:/repo
+  feast:
+    build: ./services/feast_repo          # TODO: donnez le chemin de build
+    depends_on:
+      - postgres
+    environment:
+      FEAST_USAGE: "False"
+    volumes:
+      - ./services/feast_repo/repo:/repo  # TODO: monter le dossier ./services/feast_repo/repo dans /repo
+  
+  api:
+    build: ./api
+    env_file: .env
+    depends_on:
+      - postgres
+      - feast
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app
+      - ./services/feast_repo/repo:/repo   # pour que l'API voie le repo Feast
 
 volumes:
   pgdata:
