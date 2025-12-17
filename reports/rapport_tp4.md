@@ -72,7 +72,7 @@ On fixe ces paramètres afin d'isoler les causes de variation des performances :
 - `AS_OF` (Reproductibilité des Données) : Il fige l'état temporel du dataset. Sans lui, ré-exécuter le script demain inclurait de nouvelles données ou des modifications, rendant impossible la comparaison équitable avec une version précédente du modèle. Cela garantit que le dataset d'entrée est constant.
 - `random_state` (Reproductibilité de l'Algorithme) : Il fige l'aléatoire des calculs (split train/val, échantillonnage du Random Forest). Sans lui, deux exécutions successives sur les mêmes données produiraient des métriques différentes juste par "chance".
 
-**EXERCICE 3 : Explorer l’interface ML�ow et promouvoir un modèle**
+**EXERCICE 3 : Explorer l’interface MLflow et promouvoir un modèle**
 
 Question 3.f. Dans votre rapport reports/rapport_tp4.md, incluez :
 - une capture de l’UI MLflow montrant le run (métriques + artefacts),
@@ -87,7 +87,7 @@ Artefacts :
 
 - une capture du Model Registry avec le modèle en Production,
 
-![alt text](image_tp4/imagetp43f12.png)
+![alt text](image_tp4/imagetp43f2.png)
 
 - le numéro de version promu.
 
@@ -133,3 +133,38 @@ Question 5.c. Dans votre rapport reports/rapport_tp4.md, fournissez :
      - Entité absente : le user_id demandé n’est pas présent dans l’online store : L'ID demandé (ex: 999999) n'existe pas dans le Feature Store (nouveau client ou erreur de saisie). Feast renvoie des None, ce qui ferait crasher le modèle mathématique sans vérification préalable.
      - Online store incomplet / obsolète : la matérialisation est manquante ou n’est pas à jour (stale), ce qui se traduit par des valeurs manquantes côté API : Si le job de matérialisation (feast materialize) tombe en panne ou a du retard (latence), les données pour un utilisateur existant peuvent être manquantes dans Redis/Postgres Online. L'API se retrouve "aveugle" et doit refuser de prédire plutôt que de fournir une prédiction aléatoire basée sur des vides.
 
+**EXERCICE 6 : Réflexion de synthèse (ingénierie MLOps)**
+
+Question 6.a. Expliquez ce que MLflow garantit dans cette pipeline :
+- au niveau de la traçabilité des entraînements,
+- au niveau de l’identification des modèles servis.
+
+Traçabilité des entraînements :
+1. Contrairement à des prints dans la console, MLflow a historisé chaque exécution de train_baseline.py avec :
+    - Le contexte des données : Le paramètre as_of loggé permet de lier une performance modèle (AUC) à un état précis de la base de
+    données (Snapshot du 31 Janvier).
+    - Les artefacts : Le fichier feature_schema.json et le modèle sérialisé (pipeline complet) sont stockés ensemble, garantissant qu'on peut reproduire ou inspecter exactement ce qui a été produit ce jour-là.
+
+2. Identification des modèles servis : Le Model Registry agit comme une source de vérité unique.
+    - Il remplace les noms de fichiers hasardeux (ex: model_final_v2.pkl) par une version stricte (Version 1, Version 2).
+    - L'utilisation de l'alias "Production" et de l'URI models:/streamflow_churn/Production garantit que l'API ne charge jamais un modèle expérimental par erreur. C'est MLflow qui fait l'aiguillage, permettant de changer le modèle actif sans redéployer le code de l'API.
+
+Question 6.b. Expliquez ce que signifie concrètement le stage Production pour l’API :
+- comment le modèle est sélectionné au démarrage,
+- ce que cela permet (ou empêche) côté déploiement.
+
+Sélection au démarrage :
+1. Lorsque l'API démarre et exécute mlflow.pyfunc.load_model("models:/streamflow_churn/Production"), elle interroge le registre pour savoir "Quelle est la version actuelle étiquetée Production ?". MLflow résout ce lien symbolique vers la version physique (ex: Version 1) et sert les fichiers correspondants. L'API n'a donc jamais besoin de connaître le numéro de version exact en dur dans son code.
+
+2. Impact sur le déploiement :
+    - Ce que cela permet : La mise à jour du modèle "à chaud" ou par simple redémarrage, sans toucher au code de l'API ni reconstruire l'image Docker. Si la Version 2 est promue en Production via l'UI, l'API la chargera automatiquement au prochain démarrage.
+    - Ce que cela empêche : L'exposition accidentelle de modèles non validés. L'API étant configurée strictement sur le canal "Production", elle ignorera mécaniquement tout modèle en "Staging" ou sans stage, protégeant les utilisateurs finaux des expérimentations des Data Scientists.
+
+Question 6.c. Identifiez au moins trois points où la reproductibilité peut encore casser dans ce système, même avec
+MLflow (exemples : données, code, configuration, environnement).
+
+1. Code non versionné (Git) : MLflow trace les paramètres, mais si l'entraînement est lancé depuis un code local contenant des modifications non commitées, il sera impossible de retrouver le code exact ayant produit le modèle.
+
+2. Environnement instable (Dépendances) : Si le requirements.txt n'épingle pas strictement toutes les versions (ex: pandas au lieu de pandas==2.0.3), une reconstruction de l'image Docker dans 6 mois pourrait installer des versions plus récentes, modifiant subtilement les résultats ou cassant le code (j'ai eu le cas avec le module de BigDATA en revenant plus tard et en relançant mon notebook des nouvelles versions de Spark, nottament, s'étaient installées cassant la suite du code...)
+
+3. Intégrité des sources de données : Le paramètre as_of repose sur la fiabilité des tables de snapshots. Si les données sources (CSV) sont modifiées rétroactivement ou si le pipeline d'ingestion (Upsert) change de logique, les snapshots futurs pour la même date pourraient différer de ceux utilisés initialement.
