@@ -1,24 +1,12 @@
-**Exercice 1 : Mise en route + rappel de contexte (sanity checks + où on en est dans la pipeline)**
-
-Question 1.a. Démarrez la stack Docker Compose et vérifiez que les conteneurs principaux démarrent sans erreur.
-
-ok
-
-Question 1.b. Ajoutez le service MLflow dans docker-compose.yml, puis redémarrez la stack.
-
-MLflow ok
-
-Question 1.c. Vérifiez l’accessibilité des interfaces et endpoints suivants : MLfiow UI (localhost:5000), API /health (localhost:8000).
-
-Question 1.d. Faites un smoke check : vérifiez que la récupération de features online fonctionne toujours via l’endpoint existant /features/{user_id}.
+**EXERCICE 1 : Mise en route + rappel de contexte (sanity checks + où on en est dans la pipeline)**
 
 Question 1.e. Dans votre rapport reports/rapport_tp4.md, listez :
 1. les commandes utilisées,
 
-Relancer les services pour commencer le TP
+Relancer les services pour commencer le TP :
 docker compose up --build
 
-Relancer les services pour prise en compte de MLflow dans docker-compose.yml
+Relancer les services pour prise en compte de MLflow dans docker-compose.yml :
 docker compose up -d --build
 
 Check des features toujours accessible :
@@ -46,14 +34,13 @@ kilia@LEGION-Kilian:~/tpdocker$ curl http://localhost:8000/features/7590-VHVEG
 {"user_id":"7590-VHVEG","features":{"user_id":"7590-VHVEG","monthly_fee":29.850000381469727,"months_active":1,"paperless_billing":true}}
 
 3. un court paragraphe : “quels composants tournent et pourquoi”.
+- PostgreSQL : Sert de stockage persistant pour les données brutes et les snapshots historiques.
+- Prefect : Orchestre et supervise l'exécution des pipelines d'ingestion et de validation de données.
+- Feast : Assure la gestion unifiée des features, garantissant la cohérence entre l'entraînement (Offline) et la production (Online).
+- API (FastAPI) : Expose les données (et bientôt les prédictions) via des endpoints HTTP pour les applications clientes.
+- MLflow : Centralise le suivi des expériences (tracking) et gère le registre des modèles pour le déploiement.
 
-PostgreSQL : Sert de stockage persistant pour les données brutes et les snapshots historiques.
-Prefect : Orchestre et supervise l'exécution des pipelines d'ingestion et de validation de données.
-Feast : Assure la gestion unifiée des features, garantissant la cohérence entre l'entraînement (Offline) et la production (Online).
-API (FastAPI) : Expose les données (et bientôt les prédictions) via des endpoints HTTP pour les applications clientes.
-MLflow : Centralise le suivi des expériences (tracking) et gère le registre des modèles pour le déploiement.
-
-**Exercice 2 : Créer un script d’entraînement + tracking MLflow (baseline RandomForest)**
+**EXERCICE 2 : Créer un script d’entraînement + tracking MLflow (baseline RandomForest)**
 
 Question 2.a. Créez le fichier services/prefect/train_baseline.py et copiez le squelette ci-dessous. Complétez
 ensuite les zones marquées par _______ (ce sont vos TODO).
@@ -82,7 +69,67 @@ Question 2.d. Toujours dans le rapport, expliquez en 5–8 lignes pourquoi on fi
 - random_state
 
 On fixe ces paramètres afin d'isoler les causes de variation des performances :
-
 - `AS_OF` (Reproductibilité des Données) : Il fige l'état temporel du dataset. Sans lui, ré-exécuter le script demain inclurait de nouvelles données ou des modifications, rendant impossible la comparaison équitable avec une version précédente du modèle. Cela garantit que le dataset d'entrée est constant.
 - `random_state` (Reproductibilité de l'Algorithme) : Il fige l'aléatoire des calculs (split train/val, échantillonnage du Random Forest). Sans lui, deux exécutions successives sur les mêmes données produiraient des métriques différentes juste par "chance".
+
+**EXERCICE 3 : Explorer l’interface ML�ow et promouvoir un modèle**
+
+Question 3.f. Dans votre rapport reports/rapport_tp4.md, incluez :
+- une capture de l’UI MLflow montrant le run (métriques + artefacts),
+
+Run + métrique :
+
+![alt text](image_tp4/imagetp43f1.png)
+
+Artefacts :
+
+![alt text](image_tp4/imagetp43f12.png)
+
+- une capture du Model Registry avec le modèle en Production,
+
+![alt text](image_tp4/imagetp43f12.png)
+
+- le numéro de version promu.
+
+Version 1
+
+Question 3.g. Expliquez en 5–8 lignes pourquoi la promotion via une interface (stages None, Staging, Production) est
+préférable à un déploiement manuel basé sur des fichiers ou des chemins locaux.
+
+L'utilisation de "Stages" (Staging, Production) dans un Model Registry est préférable à la gestion manuelle de fichiers pour trois raisons majeures :
+1.  Découplage Code/Modèle : L'application (API) est configurée pour charger `models:/streamflow_churn/Production`. Pour mettre à jour le modèle, il suffit de changer l'étiquette dans MLflow sans avoir à modifier le code de l'API ni redéployer des conteneurs.
+2.  Gouvernance et Sécurité : Cela crée une source de vérité unique. On évite les erreurs humaines liées aux fichiers locaux ambigus (ex: `model_v2_final_vrai.pkl`) et on sait exactement qui a promu quelle version et quand.
+3.  Rollback instantané : En cas d'incident en production, on peut rétrograder la version via l'interface en quelques secondes, sans intervention technique lourde sur les serveurs.
+
+**EXERCICE 4 : Étendre l’API pour exposer /predict (serving minimal end-to-end)**
+
+Question 4.f. Dans votre rapport reports/rapport_tp4.md, incluez :
+- une requête réussie (capture Swagger ou commande curl),
+
+kilia@LEGION-Kilian:~/tpdocker$ curl -X POST "http://localhost:8000/predict" \
+> -H "Content-Type: application/json" \
+> -d '{"user_id": "7590-VHVEG"}'
+
+- la réponse JSON obtenue
+
+{"user_id":"7590-VHVEG","prediction":1,"features_used":{"paperless_billing":true,"net_service":"DSL","monthly_fee":29.850000381469727,"plan_stream_tv":false,"months_active":1,"plan_stream_movies":false,"rebuffer_events_7d":1,"skips_7d":4,"avg_session_mins_7d":29.14104461669922,"watch_hours_30d":24.48365020751953,"unique_devices_30d":3,"failed_payments_90d":1,"ticket_avg_resolution_hrs_90d":16.0,"support_tickets_90d":0}}
+
+Question 4.g. Dans votre rapport, expliquez en 5–8 lignes pourquoi le modèle chargé par l’API doit pointer vers models:/streamflow_churn/Production et pas vers un fichier local (.pkl) ou un artifact de run.
+
+Pointer vers l'URI `models:/streamflow_churn/Production` permet de découpler le cycle de vie du modèle du code de l'application. Si nous utilisions un fichier `.pkl` local ou un ID de run spécifique, chaque mise à jour du modèle nécessiterait de modifier le code de l'API et de redéployer l'image Docker. Avec l'alias "Production", l'API n'en sait rien de la version exacte : les Data Scientists peuvent promouvoir une nouvelle version (v2, v3...) via l'interface MLflow, et l'API chargera automatiquement ce nouveau modèle au prochain démarrage (ou rechargement), garantissant fluidité et gouvernance.
+
+**EXERCICE 5 : Robustesse du serving : cas d’échec réalistes (sans monitoring)**
+
+Question 5.c. Dans votre rapport reports/rapport_tp4.md, fournissez :
+- un exemple de requête qui réussit (commande/capture) + la réponse JSON,
+
+![alt text](image_tp4/imagetp45c1.png)
+
+- un exemple de requête qui échoue (commande/capture) + la réponse JSON d’erreur (avec missing_features),
+
+![alt text](image_tp4/imagetp45c2.png)
+
+- un court paragraphe “ce qui peut mal tourner en serving et comment on le détecte tôt”. Dans ce paragraphe, discutez au minimum ces deux causes (sans refaire Feast) :
+     - Entité absente : le user_id demandé n’est pas présent dans l’online store : L'ID demandé (ex: 999999) n'existe pas dans le Feature Store (nouveau client ou erreur de saisie). Feast renvoie des None, ce qui ferait crasher le modèle mathématique sans vérification préalable.
+     - Online store incomplet / obsolète : la matérialisation est manquante ou n’est pas à jour (stale), ce qui se traduit par des valeurs manquantes côté API : Si le job de matérialisation (feast materialize) tombe en panne ou a du retard (latence), les données pour un utilisateur existant peuvent être manquantes dans Redis/Postgres Online. L'API se retrouve "aveugle" et doit refuser de prédire plutôt que de fournir une prédiction aléatoire basée sur des vides.
 
