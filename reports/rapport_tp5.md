@@ -82,3 +82,39 @@ Question 3.d. Dans votre rapport reports/rapport_tp5.md, ajoutez :
 Exemple courbe pour rate(api_requests_total[5m]) :
 
 ![alt text](image_tp5/imagetp53d2.png)
+
+**EXERCICE 4 : Setup de Grafana Setup et création d'un dashboard minimal**
+
+Question 4.e. Dans votre rapport reports/rapport_tp5.md, ajoutez :
+- Une capture d’écran du dashboard Grafana avec un pic de trafic visible.
+
+![alt text](image_tp5/imagetp54e1.png)
+
+- Une capture d’écran de l’éditeur de requête d’un panel.
+
+![alt text](image_tp5/imagetp54e2.png)
+
+- Un court texte (5–8 lignes) expliquant ce que ces métriques détectent bien, et ce qu’elles ne permettent pas de détecter (ex: qualité du modèle).
+
+Ce dashboard est excellent pour surveiller la santé opérationnelle de l'API. Il permet de détecter immédiatement une panne serveur (RPS tombant à zéro), une surcharge (pic de RPS) ou une dégradation de l'expérience utilisateur (augmentation de la latence).
+
+Cependant, il est totalement aveugle sur la qualité des prédictions. L'API peut répondre très vite (latence faible) et avec succès (HTTP 200), tout en renvoyant des prédictions aberrantes ou biaisées à cause d'un changement dans les données d'entrée (Data Drift) ou d'un modèle obsolète. C'est pourquoi le monitoring technique doit être complété par une détection de drift (comme Evidently). Ce qu'on va faire dans la suite du TP.
+
+**EXERCICE 5 : Drift Detection with Evidently (Month_000 vs Month_001)**
+
+Question 5.c. Dans votre rapport reports/rapport_tp5.md, ajoutez :
+- Une capture d’écran du rapport Evidently (HTML) ou d’une section clé montrant la comparaison ref vs current.
+
+![alt text](image_tp5/imagetp55c1.png)
+
+- Une réponse courte : différence entre covariate drift et target drift dans ce projet.
+
+Covariate Drift (Data Drift) : Désigne le changement de distribution des variables d'entrée (features) comme watch_hours ou monthly_fee. C'est le signal que les habitudes des utilisateurs changent.
+
+Target Drift (Concept Drift) : Désigne le changement de distribution de la variable à prédire (target), ici churn_label. Cela indique si le taux de désabonnement global a augmenté ou diminué drastiquement.
+
+- Le copier/coller de la ligne de décision finale imprimée par le script.
+
+[Evidently] report_html=/reports/evidently/drift_2024-01-31_vs_2024-02-29.html report_json=/reports/evidently/drift_2024-01-31_vs_2024-02-29.json drift_share=0.06 -> NO_ACTION drift_share=0.06 < 0.30 (target_drift=0.0)
+
+Interprétation : Seulement 6% des colonnes ont drifté, ce qui est inférieur au seuil d'alerte de 30%. Aucun réentraînement n'est déclenché.
