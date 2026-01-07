@@ -92,34 +92,46 @@ L'API charge le modèle en mémoire une seule fois au démarrage de l'applicatio
 Question 6.c. Dans votre rapport, ajoutez :
 Une capture GitHub Actions montrant un run qui passe
 
-
+![alt text](image_tp6/question6ctp6.png)
 
 Une phrase expliquant pourquoi on démarre Docker Compose dans la CI (tests d’intégration multi-services)
 
-
+On démarre Docker Compose dans la CI pour réaliser des tests d'intégration : cela permet de vérifier que les différents services (API, Base de données, MLflow) parviennent à démarrer et à communiquer entre eux dans un environnement réaliste, ce que les tests unitaires isolés ne peuvent pas garantir.
 
 **EXERCICE 7 : Synthèse finale : boucle complète drift → retrain → promotion → serving**
 
 Question 7.a. Dans votre rapport, écrivez une synthèse courte (½ page) qui explique :
 Comment le drift est mesuré et le rôle du seuil 0.02 (en pratique, plus élevé)
 
+Le drift est mesuré par Evidently en comparant la distribution statistique des données de référence (mois M-1) et des données actuelles (mois M). Le métrique clé est le drift_share (pourcentage de colonnes ayant dérivé).
 
+Rôle du seuil (0.02) : Dans ce TP, nous avons fixé un seuil très bas (2%) pour forcer le déclenchement du réentraînement à des fins de démonstration. En production, ce seuil serait bien plus élevé (ex: 0.3 ou 0.5) pour éviter le "re-training fatigue" (réentraînements inutiles dûs au bruit statistique).
 
 Comment le flow train_and_compare_flow compare val_auc et décide une promotion
 
-
+Ce flow orchestre la compétition entre modèles :
+- Il entraîne un Challenger sur les données les plus récentes.
+- Il charge le modèle Champion (actuellement en Production) depuis MLflow.
+- Il évalue les deux sur le même jeu de validation (X_val, y_val).
+- Décision : Si AUC_Challenger > AUC_Champion + delta, alors le Challenger est promu en "Production" via l'API du Model Registry. Sinon, il est rejeté.
 
 Ce qui relève de Prefect vs GitHub Actions
 
+Prefect (Orchestration Data/ML) : Gère le cycle de vie de la donnée et du modèle. Il s'exécute sur une infrastructure dédiée (GPU/gros serveurs) et gère des tâches longues (entraînement, ingestion).
 
+GitHub Actions (CI/CD Logiciel) : Gère le cycle de vie du code. Il vérifie que le code est sain (tests unitaires), que l'application démarre (smoke tests) et que l'image Docker se construit. Il ne touche pas aux données réelles.
 
 Question 7.b. Ajoutez une petite section “limites / améliorations” :
 Pourquoi la CI ne doit pas entraîner le modèle complet
 
-
+L'entraînement d'un modèle réel peut prendre des heures ou des jours et nécessite des ressources coûteuses (GPU). Bloquer une Pull Request ou un déploiement de code pendant ce temps est inefficace. De plus, la CI doit être déterministe, alors que l'entraînement dépend de données mouvantes.
 
 Quels tests manquent
 
-
+Tests de charge (Load Testing) : Vérifier si l'API tient 1000 requêtes/seconde (avec Locust ou k6).
+Tests de biais/équité : Vérifier que le modèle ne discrimine pas une sous-population.
+Integration Tests Data : Vérifier que le format des données Feast n'a pas changé de manière cassante.
 
 Pourquoi l’approbation humaine / gouvernance est souvent nécessaire en vrai
+
+L'automatisation totale est risquée. Si le système de monitoring déraille, on pourrait promouvoir un modèle toxique en production. Une étape d'approbation manuelle dans MLflow ou via une Pull Request est souvent requise pour valider les métriques métier avant le déploiement final.
